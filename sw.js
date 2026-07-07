@@ -1,6 +1,6 @@
 /* Service Worker — NAVALCARE Vistoria de Veleiro
    Cache-first: depois de aberto uma vez (com internet), funciona 100% offline. */
-const CACHE = 'navalcare-vistoria-v2';
+const CACHE = 'navalcare-vistoria-v3';
 const ASSETS = [
   './',
   './index.html',

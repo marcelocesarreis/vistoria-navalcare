@@ -377,6 +377,18 @@ const CHECKLIST = [
    {n:"Sistema de flush / conservação",d:"Enxágue com água doce após uso; químicos"},
    {n:"Painel de controle e sensores",d:"Pressostatos, desvio automático, alarmes"},
  ]},
+ {ico:"🧭", titulo:"Bow Thruster / Hélice de Proa", itens:[
+   {n:"Bow thruster — tipo e potência",d:"Elétrico ou hidráulico; kgf/modelo",f:1},
+   {n:"Hélice, túnel e ânodo (subaquático)",d:"Trincas na hélice, incrustação, ânodo — fotografar",f:1},
+   {n:"Vedação do eixo / juntas do túnel",d:"Vazamentos para o interior"},
+   {n:"Motor elétrico, escovas e solenoides",d:"Contactores, corrosão, cheiro de queimado",f:1},
+   {n:"Bateria dedicada, cabos e fusível",d:"Terminais, bitola, fusível/breaker próximo"},
+   {n:"Acionamento e resposta (BB / BE)",d:"Joystick/painel; empuxo para os dois bordos"},
+   {n:"Proteção térmica / tempo de uso",d:"Corte por sobreaquecimento (duty cycle)"},
+   {n:"Ruído, vibração e folga",d:"Rolamentos, hélice solta"},
+   {n:"Sistema hidráulico (se hidráulico)",d:"Bomba, mangueiras, nível/vazamento de óleo"},
+   {n:"Stern thruster (hélice de popa), se houver",d:"Mesmos itens aplicados à popa"},
+ ]},
  {ico:"🌊", titulo:"Teste de Mar (sea trial)", itens:[
    {n:"Partida e manobra na marina",d:"Resposta em ré, propwalk"},
    {n:"Velocidade e RPM (cruzeiro e máxima)",d:"Compare com especificação",f:1},
@@ -730,12 +742,80 @@ async function gerarPDF(){
     doc.text(lab,cx+cw/2,fy+15.5,{align:"center"});doc.setCharSpace(0);
   });
   doc.setTextColor(...CINZA);doc.setFontSize(8);doc.setFont("helvetica","normal");
-  doc.text(totalResp+" itens avaliados de "+CHECKLIST.reduce((a,s)=>a+s.itens.length,0)+" no checklist completo",W/2,fy+27,{align:"center"});
+  const totalGeral=CHECKLIST.reduce((a,s)=>a+s.itens.length,0);
+  const pend=totalGeral-totalResp;
+  doc.text(totalResp+" itens avaliados de "+totalGeral+" · "+pend+" pendente(s)",W/2,fy+27,{align:"center"});
+
+  // faixa de destaque na capa: o cliente já vê aqui que há problemas
+  if(gr>0||at>0){
+    const hy=fy+33, col=gr>0?COR.grave:COR.atencao;
+    const partes=[]; if(gr>0)partes.push(gr+(gr>1?" itens críticos":" item crítico"));
+    if(at>0)partes.push(at+(at>1?" de atenção":" de atenção"));
+    doc.setFillColor(col[0],col[1],col[2]);doc.roundedRect(bx,hy,bw,11,2,2,"F");
+    doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(9);
+    doc.text(partes.join("  +  ")+"  —  ver Quadro de Apontamentos (pág. 2)",W/2,hy+7,{align:"center"});
+  }
 
   if(totalResp===0){
     doc.setTextColor(...COR.grave);doc.setFontSize(10);
     doc.text("Nenhum item avaliado ainda. Marque os itens no app e gere novamente.",W/2,fy+40,{align:"center"});
     rodape();salvarPDF(doc,info);return;
+  }
+
+  /* ---------- QUADRO DE APONTAMENTOS (por prioridade) ---------- */
+  // reúne TODOS os itens críticos, de atenção e pendentes, do mais grave ao pendente
+  const _cri=[],_ate=[],_pen=[];
+  CHECKLIST.forEach((sec,si)=>sec.itens.forEach((it,ii)=>{
+    const st=estado.itens[idDe(si,ii)]||{};const rec={sec:sec.titulo,nome:it.n,nota:st.nota||""};
+    if(st.e==="grave")_cri.push(rec);else if(st.e==="atencao")_ate.push(rec);else if(!st.e)_pen.push(rec);
+  }));
+  const NIV={grave:{rot:"CRÍTICO",col:COR.grave},atencao:{rot:"ATENÇÃO",col:COR.atencao},pendente:{rot:"PENDENTE",col:COR.na}};
+  const quadro=[..._cri.map(r=>(r.nivel="grave",r)),..._ate.map(r=>(r.nivel="atencao",r)),..._pen.map(r=>(r.nivel="pendente",r))];
+
+  doc.addPage();y=cabecalhoTopo();
+  doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...NAVY);
+  doc.setCharSpace(.8);doc.text("QUADRO DE APONTAMENTOS",M,y);doc.setCharSpace(0);
+  y+=4;doc.setDrawColor(...NAVY);doc.setLineWidth(0.5);doc.line(M,y,W-M,y);y+=6;
+  doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.setTextColor(...CINZA);
+  doc.text("Ordenado por prioridade — do mais crítico ao pendente. Visão rápida do que precisa de atenção no barco.",M,y,{maxWidth:W-2*M});
+  y+=7;
+  // pílulas-resumo
+  const pilulas=[["CRÍTICOS",_cri.length,COR.grave],["ATENÇÃO",_ate.length,COR.atencao],["PENDENTES",_pen.length,COR.na]];
+  let pxx=M;
+  pilulas.forEach(([lab,val,col])=>{
+    const txt=val+" "+lab, wd=doc.getTextWidth(txt)*0.34+10;
+    doc.setFillColor(col[0],col[1],col[2]);doc.roundedRect(pxx,y,wd,6.5,3,3,"F");
+    doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(8);
+    doc.text(txt,pxx+wd/2,y+4.4,{align:"center"});pxx+=wd+4;
+  });
+  y+=13;
+
+  if(!quadro.length){
+    doc.setTextColor(...COR.ok);doc.setFont("helvetica","bold");doc.setFontSize(11);
+    doc.text("Nenhum item crítico, de atenção ou pendente.",M,y);
+    doc.setTextColor(...CINZA);doc.setFont("helvetica","normal");doc.setFontSize(9);
+    doc.text("Todos os itens avaliados estão conformes.",M,y+6);
+  }else{
+    quadro.forEach((r,i)=>{
+      const tagW=23, itemX=M+tagW+5, itemW=W-M-itemX;
+      const nomeLines=doc.splitTextToSize(r.nome,itemW);
+      const notaLines=r.nota?doc.splitTextToSize("» "+r.nota,itemW):[];
+      const rowH=7.4+nomeLines.length*4.4+(notaLines.length?notaLines.length*3.9+1:0)+3;
+      checaPag(rowH);
+      const top=y;
+      const N=NIV[r.nivel];
+      doc.setFillColor(N.col[0],N.col[1],N.col[2]);doc.roundedRect(M,top,tagW,6.5,1.3,1.3,"F");
+      doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(6.6);
+      doc.text(N.rot,M+tagW/2,top+4.4,{align:"center"});
+      doc.setTextColor(...CINZA);doc.setFont("helvetica","normal");doc.setFontSize(6.8);
+      doc.text((i+1)+" · "+r.sec.toUpperCase(),itemX,top+2.6);
+      let yy=top+7.4;
+      doc.setTextColor(...NAVY);doc.setFont("helvetica","bold");doc.setFontSize(9);
+      doc.text(nomeLines,itemX,yy);yy+=nomeLines.length*4.4;
+      if(notaLines.length){doc.setTextColor(...CINZA);doc.setFont("helvetica","italic");doc.setFontSize(7.5);doc.text(notaLines,itemX,yy);yy+=notaLines.length*3.9;}
+      y=Math.max(top+rowH,yy+3);
+      doc.setDrawColor(...LINHA);doc.setLineWidth(0.15);doc.line(M,y-1.5,W-M,y-1.5);
+    });
   }
 
   /* ---------- DETALHAMENTO ---------- */
@@ -809,36 +889,6 @@ async function gerarPDF(){
       y+=5;
     }
     y+=3;
-  }
-
-  /* ---------- APONTAMENTOS CRÍTICOS ---------- */
-  const criticos=[],atencoes=[];
-  dados.forEach(s=>s.itens.forEach(it=>{
-    if(it.e==="grave")criticos.push([s.titulo,it.nome,it.nota]);
-    if(it.e==="atencao")atencoes.push([s.titulo,it.nome,it.nota]);}));
-  if(criticos.length||atencoes.length){
-    doc.addPage();y=cabecalhoTopo();
-    doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...NAVY);
-    doc.setCharSpace(.8);doc.text("APONTAMENTOS PRIORITÁRIOS",M,y);doc.setCharSpace(0);
-    y+=4;doc.setDrawColor(...NAVY);doc.setLineWidth(0.5);doc.line(M,y,W-M,y);y+=9;
-    function bloco(titulo,arr,col){
-      if(!arr.length)return;
-      checaPag(12);
-      doc.setFillColor(col[0],col[1],col[2]);doc.roundedRect(M,y-5,W-2*M,7,1.5,1.5,"F");
-      doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(9);
-      doc.setCharSpace(.8);doc.text(titulo,M+4,y);doc.setCharSpace(0);y+=9;
-      arr.forEach(([sec,nome,nota],i)=>{
-        const linhas=doc.splitTextToSize((i+1)+". "+nome+(nota?"  —  "+nota:""),W-2*M-6);
-        checaPag(linhas.length*4.6+3);
-        doc.setTextColor(...CINZA);doc.setFont("helvetica","normal");doc.setFontSize(7);
-        doc.text(sec.toUpperCase(),M+3,y);y+=3.6;
-        doc.setTextColor(...NAVY);doc.setFont("helvetica","bold");doc.setFontSize(9);
-        doc.text(linhas,M+3,y);y+=linhas.length*4.6+3;
-      });
-      y+=3;
-    }
-    bloco("ITENS CRÍTICOS — AÇÃO IMEDIATA",criticos,COR.grave);
-    bloco("ITENS DE ATENÇÃO",atencoes,COR.atencao);
   }
 
   /* ---------- ASSINATURA ---------- */
