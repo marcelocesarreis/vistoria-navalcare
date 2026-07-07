@@ -1,6 +1,9 @@
 /* Service Worker — NAVALCARE Vistoria de Veleiro
    Cache-first: depois de aberto uma vez (com internet), funciona 100% offline. */
-const CACHE = 'navalcare-vistoria-v4';
+const CACHE = 'navalcare-vistoria-v5';
+/* OCR em cache separado e SEM versão: os arquivos do motor de leitura (16 MB)
+   não mudam entre versões do app — atualizações não os re-baixam. */
+const OCR_CACHE = 'navalcare-ocr-v1';
 const ASSETS = [
   './',
   './index.html',
@@ -9,9 +12,6 @@ const ASSETS = [
   './icon-512.png',
   './apple-touch-icon.png'
 ];
-/* Motor de OCR (leitura das placas) — cacheado em melhor esforço:
-   se algum arquivo falhar, o app instala mesmo assim e o OCR
-   é cacheado no primeiro uso online. */
 const OCR = [
   './ocr/tesseract.min.js',
   './ocr/worker.min.js',
@@ -22,18 +22,22 @@ const OCR = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE)
-      .then((c) => c.addAll(ASSETS)
-        .then(() => Promise.allSettled(OCR.map((u) => c.add(u)))))
-      .then(() => self.skipWaiting())
-  );
+  e.waitUntil((async () => {
+    const c = await caches.open(CACHE);
+    await c.addAll(ASSETS);
+    // OCR: melhor esforço, e só baixa o que ainda não está no cache
+    const oc = await caches.open(OCR_CACHE);
+    await Promise.allSettled(OCR.map(async (u) => {
+      if (!(await oc.match(u))) await oc.add(u);
+    }));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((ks) => Promise.all(ks.filter((k) => k !== CACHE && k !== OCR_CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -46,7 +50,8 @@ self.addEventListener('fetch', (e) => {
       return fetch(e.request)
         .then((resp) => {
           const copy = resp.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+          const dest = e.request.url.includes('/ocr/') ? OCR_CACHE : CACHE;
+          caches.open(dest).then((c) => c.put(e.request, copy)).catch(() => {});
           return resp;
         })
         .catch(() => caches.match('./index.html'));

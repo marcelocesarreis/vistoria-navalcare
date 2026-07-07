@@ -680,12 +680,30 @@ function parsePlaca(txt){
   const lines=T.split(/\n+/).map(l=>l.trim()).filter(l=>l.length>1);
   const flat=lines.join("  ");
   let mm,serie=null;
-  if(mm=flat.match(/(?:S\s*\/?\s*N[ºO°.]?|SERIAL(?:\s*(?:NO|N[ºO°]))?|N[ºO°]\s*(?:DE\s*)?S[EÉ]RIE)[\s.:#-]*([A-Z0-9][A-Z0-9\-\/.]{3,})/))serie=mm[1];
+  // nº de série: S/N, SN, SER.NO, SERIAL NUMBER, Nº DE SÉRIE…
+  if(mm=flat.match(/(?:\bS\s*\/?\s*N[ºO°.]?|\bSER(?:IAL)?\.?\s*(?:N(?:UMBER)?[ºO°.]?\.?)?|N[ºO°]\s*(?:DE\s*)?S[EÉ]RIE)[\s.:#-]*([A-Z0-9][A-Z0-9\-\/.]{3,})/))serie=mm[1];
+  if(serie&&!/\d/.test(serie))serie=null;   // série sem dígito = leitura falsa
   if(!serie){const tok=flat.match(/\b[A-Z]{0,3}\d{5,}[A-Z0-9-]*\b/g);if(tok)serie=tok.sort((a,b)=>b.length-a.length)[0];}
-  const MARCAS=["YANMAR","VOLVO PENTA","VOLVO","PERKINS","VETUS","NANNI","BETA MARINE","LOMBARDINI","CUMMINS","ONAN","KOHLER","FISCHER PANDA","PAGURO","WESTERBEKE","NORTHERN LIGHTS","MASE","WHISPERPOWER","RAYMARINE","GARMIN","B&G","SIMRAD","FURUNO","LOWRANCE","ICOM","STANDARD HORIZON","MASTERVOLT","VICTRON","SIDE-POWER","SLEIPNER","LEWMAR","QUICK","MAX POWER","SPECTRA","SCHENKER","KATADYN","ECHOTEC","DOMETIC","WEBASTO","CRUISAIR","MARINE AIR"];
-  const marca=MARCAS.find(b=>flat.includes(b))||null;
+  // marcas marítimas (específicas/compostas primeiro; detecção por palavra inteira)
+  const MARCAS=[
+    "VOLVO PENTA","MERCEDES-BENZ","ROLLS-ROYCE","CUMMINS ONAN","JOHN DEERE","HYUNDAI SEASALL","LISTER PETTER","SOLE DIESEL","BETA MARINE","JOHNSON PUMP","MERCRUISER","CATERPILLAR",
+    "YANMAR","VOLVO","MERCURY","MERCEDES","MTU","MAN","CAT","SCANIA","IVECO","FPT","PERKINS","CUMMINS","KUBOTA","MITSUBISHI","ISUZU","DOOSAN","WEICHAI","BAUDOUIN","DEUTZ","HATZ","FARYMANN","BUKH","NANNI","VETUS","LOMBARDINI","STEYR","LUGGER","GARDNER","LISTER","MWM","AGRALE","CRUSADER","INDMAR","ILMOR",
+    "YAMAHA","TOHATSU","SUZUKI","HONDA","EVINRUDE","JOHNSON","SELVA","PARSUN","HIDEA",
+    "TWIN DISC","VELVET DRIVE","BORGWARNER","TECHNODRIVE","KANZAKI","HURTH","PRM","ZF",
+    "FISCHER PANDA","NORTHERN LIGHTS","WHISPERPOWER","WESTERBEKE","ONAN","KOHLER","PAGURO","MASE","NEXTGEN","PHASOR",
+    "STANDARD HORIZON","DIGITAL YACHT","EM-TRAK","OCEAN SIGNAL","RAYMARINE","GARMIN","B&G","SIMRAD","FURUNO","LOWRANCE","ICOM","HUMMINBIRD","SI-TEX","KODEN","JRC","SAILOR","VESPER","MARETRON","ACTISENSE","AIRMAR","NAVICO","KVH","INTELLIAN","IRIDIUM","STARLINK","FLIR","ACR","MCMURDO","KANNAD","UNIDEN","COBRA",
+    "VICTRON ENERGY","STERLING POWER","BLUE SEA","MASTERVOLT","VICTRON","XANTREX","PROMARINER","MAGNUM","BALMAR","PHILIPPI","CZONE","BEP","RENOGY","EPEVER","LIFELINE","TROJAN","ODYSSEY","OPTIMA","ROLLS","VARTA","EXIDE","FULLRIVER","MOURA","HELIAR",
+    "SIDE-POWER","MAX POWER","SLEIPNER","LEWMAR","QUICK","HARKEN","ANTAL","ANDERSEN","SELDEN","PROFURL","FACNOR","FURLEX","BAMAR","KARVER","SPINLOCK","RONSTAN","MAXWELL","MUIR","LOFRANS","ITALWINCH",
+    "SEA RECOVERY","VILLAGE MARINE","SPECTRA","SCHENKER","KATADYN","ECHOTEC","DESSALATOR","RAINMAN","TECNICOMAR","AQUABASE","OSMOSEA",
+    "MARINE AIR","DOMETIC","WEBASTO","CRUISAIR","MERMAID","VELAIR","CLIMMA","FRIGOMAR","FRIGOBOAT","ISOTHERM","ISOTEMP","VITRIFRIGO","ENGEL","WAECO","EBERSPACHER","ESPAR","PROPEX","WALLAS","TRUMA","FLAGSHIP",
+    "JABSCO","RULE","WHALE","SHURFLO","SEAFLO","RARITAN","THETFORD","SEALAND","GROCO","PLANUS","TECMA","VACUFLUSH","TMC",
+    "MICHIGAN WHEEL","MAX-PROP","MAXPROP","JEFA","EDSON","ULTRAFLEX","TELEFLEX","SEASTAR","UFLEX","WHITLOCK","GORI","FLEXOFOLD","AUTOPROP","BRUNTONS","VARIPROP","RADICE","VEEM",
+    "MUSTANG SURVIVAL","AB INFLATABLES","VIKING","ZODIAC","PLASTIMO","AVON","ACHILLES","CARIBE","HIGHFIELD","BOMBARD","REVERE","SWITLIK","CREWSAVER","SECUMAR",
+    "FORCE 10","ENO","ORIGO","TECHIMPEX","SMEV"];
+  const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  const marca=MARCAS.find(b=>new RegExp("\\b"+esc(b)+"\\b").test(flat))||null;
   let modelo=null;
-  if(mm=flat.match(/(?:MOD(?:EL|ELO)?|TYPE|TIPO)[\s.:#-]*([A-Z0-9][A-Z0-9\-\/.]{1,24})/))modelo=mm[1].trim();
+  if(mm=flat.match(/(?:\bMOD(?:EL|ELO)?|\bTYPE?|\bTIPO)\.?[\s.:#-]*([A-Z0-9][A-Z0-9\-\/.]{2,24})/))modelo=mm[1].trim();
   if(!modelo){const cand=lines.find(l=>/[A-Z]/.test(l)&&/\d/.test(l)&&(!serie||!l.includes(serie)));if(cand)modelo=cand.slice(0,30);}
   if(marca&&modelo&&!modelo.includes(marca))modelo=marca+" "+modelo;
   else if(marca&&!modelo)modelo=marca;
