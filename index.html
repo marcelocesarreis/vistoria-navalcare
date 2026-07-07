@@ -43,6 +43,23 @@
   .grid-info input:focus{outline:none;border-color:var(--navy);background:#fff}
   .grid-info .full{grid-column:1 / -1}
 
+  /* Equipamentos & nº de série (com leitura automática por foto) */
+  .auto-tag{float:right;font-size:9px;background:var(--agua);color:var(--navy);border:1px solid var(--linha);border-radius:10px;padding:2px 8px;letter-spacing:.05em;font-weight:700;text-transform:none}
+  .eq-cab{display:grid;grid-template-columns:86px 1fr 1fr 38px;gap:6px;font-size:9px;color:var(--suave);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin:2px 0 4px}
+  .eq-row{display:grid;grid-template-columns:86px 1fr 1fr 38px;gap:6px;align-items:center;margin-bottom:7px}
+  .eq-row.el{grid-template-columns:86px 1fr 38px}
+  .eq-row label{font-size:11px;font-weight:700;color:var(--navy)}
+  .eq-row input{width:100%;padding:7px 8px;border:1px solid var(--borda);border-radius:8px;font-size:13px;background:var(--agua2)}
+  .eq-row input:focus{outline:none;border-color:var(--navy);background:#fff}
+  .eq-row input.auto{border-color:#1f9d55;background:#f2faf5}
+  .eq-scan{border:1px solid var(--linha);background:var(--agua);border-radius:8px;font-size:15px;cursor:pointer;padding:6px 0;color:var(--navy)}
+  .eq-scan:active{transform:scale(.95)}
+  .eq-sub{font-size:10px;color:var(--suave);font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin:10px 0 6px;border-top:1px dashed var(--borda);padding-top:9px}
+  .eq-fotos{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .eq-fotos .thumb{width:64px;height:64px}
+  .eq-fotos .thumb .idx{font-size:8px}
+  .eq-nota{font-size:10.5px;color:var(--suave);margin-top:8px;line-height:1.45}
+
   .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
   .toolbar button{flex:1;min-width:140px;border:1px solid var(--borda);padding:11px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;background:var(--card);color:var(--navy);letter-spacing:.02em}
   .toolbar button.pri{background:var(--navy);color:#fff;border-color:var(--navy)}
@@ -127,6 +144,21 @@
       <div><label>Cliente</label><input data-i="cliente" placeholder="Nome do cliente"></div>
       <div class="full"><label>Vistoriador responsável</label><input data-i="vistoriador" placeholder="Seu nome"></div>
     </div>
+  </div>
+
+  <div class="info">
+    <h2>Equipamentos &amp; Nº de Série <span class="auto-tag">📷 leitura automática pela foto da placa</span></h2>
+    <div class="eq-cab"><span></span><span>Marca / modelo</span><span>Nº de série</span><span></span></div>
+    <div class="eq-row"><label>Motor</label><input data-q="mMod" placeholder="Ex: Yanmar 4JH45"><input data-q="mSer" placeholder="—"><button class="eq-scan" data-g="motor" title="Fotografar placa do motor">📷</button></div>
+    <div class="eq-row"><label>Gerador</label><input data-q="gMod" placeholder="Ex: Onan MDKBH"><input data-q="gSer" placeholder="—"><button class="eq-scan" data-g="gerador" title="Fotografar placa do gerador">📷</button></div>
+    <div class="eq-sub">Eletrônicos principais — marca e modelo</div>
+    <div class="eq-row el"><label>GPS/Chart.</label><input data-q="eChart" placeholder="Ex: Garmin GPSMAP 923"><button class="eq-scan" data-g="eChart">📷</button></div>
+    <div class="eq-row el"><label>VHF</label><input data-q="eVhf" placeholder="Ex: Icom IC-M330"><button class="eq-scan" data-g="eVhf">📷</button></div>
+    <div class="eq-row el"><label>Piloto autom.</label><input data-q="ePiloto" placeholder="Ex: Raymarine EV-100"><button class="eq-scan" data-g="ePiloto">📷</button></div>
+    <div class="eq-row el"><label>Radar / AIS</label><input data-q="eRadar" placeholder="Ex: B&G 4G / em1 AIS"><button class="eq-scan" data-g="eRadar">📷</button></div>
+    <div class="eq-fotos" id="eqFotos"></div>
+    <div class="eq-nota">📷 Toque no ícone, fotografe (ou escolha do rolo) a <b>placa de identificação</b> do equipamento: o sistema lê a imagem e preenche automaticamente os campos vazios. A foto da placa também entra no relatório. Campos preenchidos por leitura ficam <b style="color:#1f9d55">verdes</b> — confira e corrija se necessário.</div>
+    <input id="eqFile" type="file" accept="image/*" hidden>
   </div>
 
   <div class="toolbar">
@@ -406,6 +438,7 @@ const KEY="navalcare_survey_v2";
 let estado=JSON.parse(localStorage.getItem(KEY)||"{}");
 if(!estado.itens) estado.itens={};
 if(!estado.info) estado.info={};
+if(!estado.equip) estado.equip={};
 function salvar(){try{localStorage.setItem(KEY,JSON.stringify(estado));}catch(e){toast("Armazenamento cheio — exporte o PDF");}}
 function idDe(s,i){return "s"+s+"i"+i;}
 
@@ -436,16 +469,17 @@ async function fotoInit(){
   try{ if(navigator.storage&&navigator.storage.persist){ await navigator.storage.persist(); } }catch(_){}
 }
 async function fotoPut(id,rec){
-  if(FOTO_MODE==="idb"){return new Promise((res,rej)=>{const t=_db.transaction("fotos","readwrite");t.objectStore("fotos").put(rec,id);t.oncomplete=()=>res();t.onerror=()=>rej(t.error);});}
+  if(FOTO_MODE==="idb"&&_db){return new Promise((res,rej)=>{const t=_db.transaction("fotos","readwrite");t.objectStore("fotos").put(rec,id);t.oncomplete=()=>res();t.onerror=()=>rej(t.error);});}
   _mem.set(id,rec);
 }
 async function fotoGet(id){
-  if(FOTO_MODE==="idb"){return new Promise((res,rej)=>{const t=_db.transaction("fotos","readonly");const q=t.objectStore("fotos").get(id);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
+  if(_mem.has(id))return _mem.get(id);
+  if(FOTO_MODE==="idb"&&_db){return new Promise((res,rej)=>{const t=_db.transaction("fotos","readonly");const q=t.objectStore("fotos").get(id);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
   return _mem.get(id)||null;
 }
 async function fotoDel(id){
-  if(FOTO_MODE==="idb"){return new Promise((res)=>{const t=_db.transaction("fotos","readwrite");t.objectStore("fotos").delete(id);t.oncomplete=()=>res();});}
   _mem.delete(id);
+  if(FOTO_MODE==="idb"&&_db){return new Promise((res)=>{const t=_db.transaction("fotos","readwrite");t.objectStore("fotos").delete(id);t.oncomplete=()=>res();});}
 }
 
 /* Compressão da imagem (vale para câmera e para galeria) */
@@ -480,7 +514,8 @@ async function addFotos(files,id,div){
 async function coletarTudo(){
   const fotos={};
   for(const id in estado.itens){ for(const fid of (estado.itens[id].fotos||[])){ const r=await fotoGet(fid); if(r)fotos[fid]=r; } }
-  return {app:"navalcare-vistoria",v:2,info:estado.info,itens:estado.itens,fotos};
+  for(const g in (estado.equip&&estado.equip.fotos||{})){ const r=await fotoGet(estado.equip.fotos[g]); if(r)fotos[estado.equip.fotos[g]]=r; }
+  return {app:"navalcare-vistoria",v:3,info:estado.info,itens:estado.itens,equip:estado.equip||{},fotos};
 }
 async function entregarArquivo(blob,nome){
   const iOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
@@ -506,10 +541,12 @@ function importarBackup(input){
       const d=JSON.parse(r.result);
       if(!d||!d.itens){ toast("Arquivo de backup inválido"); return; }
       if(!confirm("Restaurar este backup? Ele substitui o que está na tela agora.")) return;
-      estado.info=d.info||{}; estado.itens=d.itens||{};
+      estado.info=d.info||{}; estado.itens=d.itens||{}; estado.equip=d.equip||{};
       for(const fid in (d.fotos||{})){ try{ await fotoPut(fid,d.fotos[fid]); }catch(_){}}
       salvar();
       document.querySelectorAll(".grid-info input").forEach(i=>i.value=estado.info[i.dataset.i]||"");
+      document.querySelectorAll("[data-q]").forEach(i=>{i.value=estado.equip[i.dataset.q]||"";i.classList.toggle("auto",!!estado.equip["_auto_"+i.dataset.q]);});
+      renderEqFotos();
       render(); toast("Backup restaurado ✓");
     }catch(e){ toast("Não foi possível ler o backup"); } };
   r.readAsText(file);
@@ -600,6 +637,103 @@ document.querySelectorAll(".grid-info input").forEach(inp=>{
   inp.oninput=()=>{estado.info[inp.dataset.i]=inp.value;salvar();};
 });
 
+/* ===== Equipamentos & nº de série — com leitura automática (OCR) ===== */
+const EQ_LABEL={motor:"Motor",gerador:"Gerador",eChart:"GPS/Chartplotter",eVhf:"VHF",ePiloto:"Piloto automático",eRadar:"Radar/AIS"};
+document.querySelectorAll("[data-q]").forEach(inp=>{
+  inp.value=estado.equip[inp.dataset.q]||"";
+  if(estado.equip["_auto_"+inp.dataset.q])inp.classList.add("auto");
+  inp.oninput=()=>{estado.equip[inp.dataset.q]=inp.value;
+    delete estado.equip["_auto_"+inp.dataset.q];inp.classList.remove("auto");salvar();};
+});
+let _eqAlvo=null;
+document.querySelectorAll(".eq-scan").forEach(b=>{
+  b.onclick=()=>{_eqAlvo=b.dataset.g;document.getElementById("eqFile").click();};
+});
+document.getElementById("eqFile").onchange=async function(){
+  const f=this.files&&this.files[0];this.value="";
+  if(f&&_eqAlvo)await eqScan(_eqAlvo,f);
+};
+
+/* OCR (Tesseract) — carregado sob demanda; arquivos servidos junto do app (offline após 1º uso) */
+let _ocrW=null,_ocrLoading=null;
+function ocrWorker(){
+  if(_ocrW)return Promise.resolve(_ocrW);
+  if(!_ocrLoading){
+    _ocrLoading=(async()=>{
+      const base=new URL("ocr",location.href).href;   // sem barra final (evita // nos caminhos)
+      if(!window.Tesseract){
+        await new Promise((res,rej)=>{const s=document.createElement("script");
+          s.src=base+"/tesseract.min.js";s.onload=res;
+          s.onerror=()=>rej(new Error("ocr indisponível"));document.head.appendChild(s);});
+      }
+      const w=await Tesseract.createWorker("eng",1,{
+        workerPath:base+"/worker.min.js",corePath:base,langPath:base,gzip:false,
+        logger:m=>{if(m.status==="recognizing text")toast("Lendo placa… "+Math.round(m.progress*100)+"%");}
+      });
+      _ocrW=w;return w;
+    })().catch(e=>{_ocrLoading=null;throw e;});
+  }
+  return _ocrLoading;
+}
+function parsePlaca(txt){
+  const T=(txt||"").toUpperCase().replace(/[|]/g,"I");
+  const lines=T.split(/\n+/).map(l=>l.trim()).filter(l=>l.length>1);
+  const flat=lines.join("  ");
+  let mm,serie=null;
+  if(mm=flat.match(/(?:S\s*\/?\s*N[ºO°.]?|SERIAL(?:\s*(?:NO|N[ºO°]))?|N[ºO°]\s*(?:DE\s*)?S[EÉ]RIE)[\s.:#-]*([A-Z0-9][A-Z0-9\-\/.]{3,})/))serie=mm[1];
+  if(!serie){const tok=flat.match(/\b[A-Z]{0,3}\d{5,}[A-Z0-9-]*\b/g);if(tok)serie=tok.sort((a,b)=>b.length-a.length)[0];}
+  const MARCAS=["YANMAR","VOLVO PENTA","VOLVO","PERKINS","VETUS","NANNI","BETA MARINE","LOMBARDINI","CUMMINS","ONAN","KOHLER","FISCHER PANDA","PAGURO","WESTERBEKE","NORTHERN LIGHTS","MASE","WHISPERPOWER","RAYMARINE","GARMIN","B&G","SIMRAD","FURUNO","LOWRANCE","ICOM","STANDARD HORIZON","MASTERVOLT","VICTRON","SIDE-POWER","SLEIPNER","LEWMAR","QUICK","MAX POWER","SPECTRA","SCHENKER","KATADYN","ECHOTEC","DOMETIC","WEBASTO","CRUISAIR","MARINE AIR"];
+  const marca=MARCAS.find(b=>flat.includes(b))||null;
+  let modelo=null;
+  if(mm=flat.match(/(?:MOD(?:EL|ELO)?|TYPE|TIPO)[\s.:#-]*([A-Z0-9][A-Z0-9\-\/.]{1,24})/))modelo=mm[1].trim();
+  if(!modelo){const cand=lines.find(l=>/[A-Z]/.test(l)&&/\d/.test(l)&&(!serie||!l.includes(serie)));if(cand)modelo=cand.slice(0,30);}
+  if(marca&&modelo&&!modelo.includes(marca))modelo=marca+" "+modelo;
+  else if(marca&&!modelo)modelo=marca;
+  return {modelo,serie,raw:lines.slice(0,6).join(" · ")};
+}
+async function eqScan(g,file){
+  try{
+    // guarda a foto da placa (entra no relatório)
+    const rec=await comprimir(file,1600,0.85);
+    const fid="eq_"+g+"_"+Date.now();
+    await fotoPut(fid,rec);
+    estado.equip.fotos=estado.equip.fotos||{};estado.equip.fotos[g]=fid;salvar();
+    renderEqFotos();
+    toast("Lendo placa…");
+    const w=await ocrWorker();
+    const {data}=await w.recognize(rec.data);
+    aplicarOCR(g,parsePlaca(data&&data.text));
+  }catch(e){
+    toast(_ocrW||_ocrLoading===null?"Não consegui ler — digite manualmente (foto salva ✓)":"Leitor indisponível offline — foto salva ✓");
+  }
+}
+function aplicarOCR(g,p){
+  const setar=(k,v)=>{
+    if(!v)return false;
+    const inp=document.querySelector('[data-q="'+k+'"]');
+    if(!inp||inp.value)return false;               // só preenche se o usuário não digitou
+    inp.value=v;inp.classList.add("auto");
+    estado.equip[k]=v;estado.equip["_auto_"+k]=1;return true;
+  };
+  let algum=false;
+  if(g==="motor"){algum=setar("mMod",p.modelo)|setar("mSer",p.serie);}
+  else if(g==="gerador"){algum=setar("gMod",p.modelo)|setar("gSer",p.serie);}
+  else{algum=setar(g,p.modelo||(p.raw?p.raw.slice(0,30):null));}
+  salvar();
+  toast(p.modelo||p.serie?("Detectado: "+[p.modelo,p.serie].filter(Boolean).join(" · ")):"Placa ilegível — digite manualmente");
+}
+async function renderEqFotos(){
+  const wrap=document.getElementById("eqFotos");wrap.innerHTML="";
+  const fs=estado.equip.fotos||{};
+  for(const g in fs){
+    const rec=await fotoGet(fs[g]);if(!rec)continue;
+    const el=document.createElement("div");el.className="thumb";
+    el.innerHTML='<img src="'+rec.data+'"><button class="del">×</button><span class="idx">'+(EQ_LABEL[g]||g)+"</span>";
+    el.querySelector(".del").onclick=async()=>{await fotoDel(fs[g]);delete estado.equip.fotos[g];salvar();renderEqFotos();};
+    wrap.appendChild(el);
+  }
+}
+
 /* Contadores */
 function atualizarTudo(){
   let ok=0,at=0,gr=0,na=0,total=0,resp=0;
@@ -638,8 +772,11 @@ function expandirTudo(a){document.querySelectorAll("details.secao").forEach(d=>d
 async function limpar(){
   if(!confirm("Apagar TODAS as avaliações, observações e fotos? Esta ação não pode ser desfeita."))return;
   for(const id in estado.itens){const fs=(estado.itens[id].fotos)||[];for(const f of fs)await fotoDel(f);}
-  estado={itens:{},info:{}};salvar();
+  for(const g in (estado.equip&&estado.equip.fotos||{}))await fotoDel(estado.equip.fotos[g]);
+  estado={itens:{},info:{},equip:{}};salvar();
   document.querySelectorAll(".grid-info input").forEach(i=>i.value="");
+  document.querySelectorAll("[data-q]").forEach(i=>{i.value="";i.classList.remove("auto");});
+  renderEqFotos();
   render();toast("Vistoria zerada");
 }
 
@@ -743,8 +880,7 @@ async function gerarPDF(){
   });
   doc.setTextColor(...CINZA);doc.setFontSize(8);doc.setFont("helvetica","normal");
   const totalGeral=CHECKLIST.reduce((a,s)=>a+s.itens.length,0);
-  const pend=totalGeral-totalResp;
-  doc.text(totalResp+" itens avaliados de "+totalGeral+" · "+pend+" pendente(s)",W/2,fy+27,{align:"center"});
+  doc.text(totalResp+" itens avaliados de "+totalGeral+" no checklist completo",W/2,fy+27,{align:"center"});
 
   // faixa de destaque na capa: o cliente já vê aqui que há problemas
   if(gr>0||at>0){
@@ -762,25 +898,69 @@ async function gerarPDF(){
     rodape();salvarPDF(doc,info);return;
   }
 
-  /* ---------- QUADRO DE APONTAMENTOS (por prioridade) ---------- */
-  // reúne TODOS os itens críticos, de atenção e pendentes, do mais grave ao pendente
-  const _cri=[],_ate=[],_pen=[];
+  /* ---------- PÁG. 2: EQUIPAMENTOS + QUADRO DE APONTAMENTOS ---------- */
+  doc.addPage();y=cabecalhoTopo();
+
+  // ----- Equipamentos e números de série -----
+  const eq=estado.equip||{};
+  doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...NAVY);
+  doc.setCharSpace(.8);doc.text("EQUIPAMENTOS E NÚMEROS DE SÉRIE",M,y);doc.setCharSpace(0);
+  y+=4;doc.setDrawColor(...NAVY);doc.setLineWidth(0.5);doc.line(M,y,W-M,y);y+=7;
+  const eqCol1=M, eqCol2=M+46, eqCol3=M+124;
+  doc.setFont("helvetica","bold");doc.setFontSize(7.2);doc.setTextColor(...NAVY_L);
+  doc.setCharSpace(.5);
+  doc.text("EQUIPAMENTO",eqCol1,y);doc.text("MARCA / MODELO",eqCol2,y);doc.text("Nº DE SÉRIE",eqCol3,y);
+  doc.setCharSpace(0);y+=2;
+  doc.setDrawColor(...LINHA);doc.setLineWidth(0.2);doc.line(M,y,W-M,y);y+=5;
+  const eqRows=[["Motor",eq.mMod,eq.mSer],["Gerador",eq.gMod,eq.gSer],
+    ["GPS / Chartplotter",eq.eChart,null],["VHF",eq.eVhf,null],
+    ["Piloto automático",eq.ePiloto,null],["Radar / AIS",eq.eRadar,null]];
+  eqRows.forEach(([lab,mod,ser])=>{
+    doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.setTextColor(...CINZA);
+    doc.text(lab,eqCol1,y);
+    doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(...NAVY);
+    doc.text(mod?String(mod).slice(0,42):"—",eqCol2,y);
+    doc.text(ser===null?"·":(ser?String(ser).slice(0,22):"—"),eqCol3,y);
+    y+=3;doc.setDrawColor(238,241,246);doc.setLineWidth(0.15);doc.line(M,y,W-M,y);y+=4.5;
+  });
+  // fotos das placas (se houver) — evidência dos dados lidos
+  const eqFotoKeys=Object.keys(eq.fotos||{});
+  if(eqFotoKeys.length){
+    y+=1;doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(...NAVY_L);
+    doc.text("Placas de identificação fotografadas:",M,y);y+=3;
+    const EQL={motor:"Motor",gerador:"Gerador",eChart:"GPS/Chart.",eVhf:"VHF",ePiloto:"Piloto",eRadar:"Radar/AIS"};
+    let ex=M, maxH=0;
+    for(const g of eqFotoKeys){
+      const r=await fotoGet(eq.fotos[g]);if(!r)continue;
+      const fw=30, fh=Math.min(24,fw*(r.h/r.w));
+      if(ex+fw>W-M){ex=M;y+=maxH+7;maxH=0;}
+      try{doc.addImage(r.data,"JPEG",ex,y,fw,fh);}catch(e){}
+      doc.setDrawColor(...LINHA);doc.setLineWidth(0.2);doc.rect(ex,y,fw,fh,"S");
+      doc.setFontSize(6.5);doc.setTextColor(...CINZA);
+      doc.text(EQL[g]||g,ex+fw/2,y+fh+3,{align:"center"});
+      maxH=Math.max(maxH,fh+4);ex+=fw+5;
+    }
+    y+=maxH+8;
+  }else y+=3;
+
+  // ----- Quadro de apontamentos: SOMENTE críticos e de atenção -----
+  const _cri=[],_ate=[];
   CHECKLIST.forEach((sec,si)=>sec.itens.forEach((it,ii)=>{
     const st=estado.itens[idDe(si,ii)]||{};const rec={sec:sec.titulo,nome:it.n,nota:st.nota||""};
-    if(st.e==="grave")_cri.push(rec);else if(st.e==="atencao")_ate.push(rec);else if(!st.e)_pen.push(rec);
+    if(st.e==="grave")_cri.push(rec);else if(st.e==="atencao")_ate.push(rec);
   }));
-  const NIV={grave:{rot:"CRÍTICO",col:COR.grave},atencao:{rot:"ATENÇÃO",col:COR.atencao},pendente:{rot:"PENDENTE",col:COR.na}};
-  const quadro=[..._cri.map(r=>(r.nivel="grave",r)),..._ate.map(r=>(r.nivel="atencao",r)),..._pen.map(r=>(r.nivel="pendente",r))];
+  const NIV={grave:{rot:"CRÍTICO",col:COR.grave},atencao:{rot:"ATENÇÃO",col:COR.atencao}};
+  const quadro=[..._cri.map(r=>(r.nivel="grave",r)),..._ate.map(r=>(r.nivel="atencao",r))];
 
-  doc.addPage();y=cabecalhoTopo();
+  checaPag(34);
   doc.setFont("helvetica","bold");doc.setFontSize(13);doc.setTextColor(...NAVY);
   doc.setCharSpace(.8);doc.text("QUADRO DE APONTAMENTOS",M,y);doc.setCharSpace(0);
   y+=4;doc.setDrawColor(...NAVY);doc.setLineWidth(0.5);doc.line(M,y,W-M,y);y+=6;
   doc.setFont("helvetica","normal");doc.setFontSize(8.5);doc.setTextColor(...CINZA);
-  doc.text("Ordenado por prioridade — do mais crítico ao pendente. Visão rápida do que precisa de atenção no barco.",M,y,{maxWidth:W-2*M});
+  doc.text("Itens críticos e de atenção identificados na vistoria, em ordem de prioridade.",M,y,{maxWidth:W-2*M});
   y+=7;
   // pílulas-resumo
-  const pilulas=[["CRÍTICOS",_cri.length,COR.grave],["ATENÇÃO",_ate.length,COR.atencao],["PENDENTES",_pen.length,COR.na]];
+  const pilulas=[["CRÍTICOS",_cri.length,COR.grave],["ATENÇÃO",_ate.length,COR.atencao]];
   let pxx=M;
   pilulas.forEach(([lab,val,col])=>{
     const txt=val+" "+lab, wd=doc.getTextWidth(txt)*0.34+10;
@@ -792,7 +972,7 @@ async function gerarPDF(){
 
   if(!quadro.length){
     doc.setTextColor(...COR.ok);doc.setFont("helvetica","bold");doc.setFontSize(11);
-    doc.text("Nenhum item crítico, de atenção ou pendente.",M,y);
+    doc.text("Nenhum item crítico ou de atenção identificado.",M,y);
     doc.setTextColor(...CINZA);doc.setFont("helvetica","normal");doc.setFontSize(9);
     doc.text("Todos os itens avaliados estão conformes.",M,y+6);
   }else{
@@ -916,6 +1096,7 @@ async function salvarPDF(doc,info){
 /* Inicializa o armazenamento e então renderiza */
 fotoInit().then(()=>{
   render();
+  renderEqFotos();
   if(FOTO_MODE==="mem") setTimeout(()=>toast("Atenção: faça Backup com frequência neste dispositivo"),500);
 });
 </script>
