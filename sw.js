@@ -1,6 +1,6 @@
 /* Service Worker — NAVALCARE Vistoria de Veleiro
    Cache-first: depois de aberto uma vez (com internet), funciona 100% offline. */
-const CACHE = 'navalcare-vistoria-v5';
+const CACHE = 'navalcare-vistoria-v6';
 /* OCR em cache separado e SEM versão: os arquivos do motor de leitura (16 MB)
    não mudam entre versões do app — atualizações não os re-baixam. */
 const OCR_CACHE = 'navalcare-ocr-v1';

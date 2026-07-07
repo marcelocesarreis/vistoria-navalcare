@@ -157,7 +157,7 @@
     <div class="eq-row el"><label>Piloto autom.</label><input data-q="ePiloto" placeholder="Ex: Raymarine EV-100"><button class="eq-scan" data-g="ePiloto">📷</button></div>
     <div class="eq-row el"><label>Radar / AIS</label><input data-q="eRadar" placeholder="Ex: B&G 4G / em1 AIS"><button class="eq-scan" data-g="eRadar">📷</button></div>
     <div class="eq-fotos" id="eqFotos"></div>
-    <div class="eq-nota">📷 Toque no ícone, fotografe (ou escolha do rolo) a <b>placa de identificação</b> do equipamento: o sistema lê a imagem e preenche automaticamente os campos vazios. A foto da placa também entra no relatório. Campos preenchidos por leitura ficam <b style="color:#1f9d55">verdes</b> — confira e corrija se necessário.</div>
+    <div class="eq-nota">📷 Toque no ícone, fotografe (ou escolha do rolo) a <b>placa de identificação</b>: o sistema lê a imagem — <b>girando-a automaticamente se estiver de lado</b> — e preenche os campos vazios. Melhor leitura: placa <b>preenchendo a tela</b>, sem reflexo. Campos lidos ficam <b style="color:#1f9d55">verdes</b> — confira e corrija se necessário. A foto entra no relatório.</div>
     <input id="eqFile" type="file" accept="image/*" hidden>
   </div>
 
@@ -704,23 +704,63 @@ function parsePlaca(txt){
   const marca=MARCAS.find(b=>new RegExp("\\b"+esc(b)+"\\b").test(flat))||null;
   let modelo=null;
   if(mm=flat.match(/(?:\bMOD(?:EL|ELO)?|\bTYPE?|\bTIPO)\.?[\s.:#-]*([A-Z0-9][A-Z0-9\-\/.]{2,24})/))modelo=mm[1].trim();
-  if(!modelo){const cand=lines.find(l=>/[A-Z]/.test(l)&&/\d/.test(l)&&(!serie||!l.includes(serie)));if(cand)modelo=cand.slice(0,30);}
+  // remove nº longos (série/peça, ex: 40869671) e ignora linhas de endereço/fabricante
+  const limpa=l=>l.replace(/\b\d{7,}[A-Z]?\b/g,"").replace(/\s+/g," ").trim();
+  const ENDERECO=/(GOTHENBURG|G[ÖO]TEBORG|SWEDEN|MADE IN|JAPAN|GERMANY|ITALY|FRANCE|U\.?S\.?A|BRA[SZ]IL|LTD|GMBH|S\.?P\.?A|\bINC\b|\bCO\b|KABUSHIKI|HAMAMATSU|FRIEDRICHSHAFEN|INDUSTRIES|CORPORATION)/;
+  const uteis=lines.filter(l=>(!serie||!l.includes(serie))&&!ENDERECO.test(l));
+  if(!modelo){ // token com letras+dígitos (3–12 ch), ex: D2-50F, 4JH45, F115AET → usa a linha dele
+    for(const l of uteis){
+      const t=(limpa(l).match(/\b(?=[A-Z0-9.\-\/]*\d)(?=[A-Z0-9.\-\/]*[A-Z])[A-Z0-9][A-Z0-9.\-\/]{2,11}\b/)||[])[0];
+      if(t){modelo=limpa(l).slice(0,30);break;}
+    }
+  }
+  if(!modelo){const cand=uteis.find(l=>/[A-Z]/.test(l)&&/\d/.test(l));if(cand)modelo=limpa(cand).slice(0,30);}
   if(marca&&modelo&&!modelo.includes(marca))modelo=marca+" "+modelo;
   else if(marca&&!modelo)modelo=marca;
   return {modelo,serie,raw:lines.slice(0,6).join(" · ")};
 }
+/* Gira a imagem (placas fotografadas de lado são comuns — o OCR não gira sozinho) */
+function rotacionar(dataUrl,graus){return new Promise((res,rej)=>{
+  const img=new Image();
+  img.onload=()=>{
+    const w=img.naturalWidth,h=img.naturalHeight;
+    const c=document.createElement("canvas");
+    if(graus%180){c.width=h;c.height=w;}else{c.width=w;c.height=h;}
+    const x=c.getContext("2d");
+    x.translate(c.width/2,c.height/2);x.rotate(graus*Math.PI/180);
+    x.drawImage(img,-w/2,-h/2);
+    res(c.toDataURL("image/jpeg",0.85));
+  };
+  img.onerror=rej;img.src=dataUrl;});}
+
+/* Tenta ler em 4 orientações e fica com o melhor resultado */
+async function lerPlacaMultiAngulo(w,dataUrl){
+  let melhor={p:{modelo:null,serie:null,raw:""},score:-1};
+  for(const ang of [0,90,270,180]){
+    if(ang)toast("Placa de lado? Girando "+ang+"°…");
+    let img=dataUrl;
+    if(ang){try{img=await rotacionar(dataUrl,ang);}catch(e){continue;}}
+    let data;try{({data}=await w.recognize(img));}catch(e){continue;}
+    const p=parsePlaca(data&&data.text);
+    const conf=(data&&data.confidence)||0;
+    const score=(p.modelo?2:0)+(p.serie?2:0)+conf/100;
+    if(score>melhor.score)melhor={p,score};
+    if(p.modelo&&p.serie&&conf>=40)break;   // achou os dois com boa confiança
+  }
+  return melhor.p;
+}
+
 async function eqScan(g,file){
   try{
     // guarda a foto da placa (entra no relatório)
-    const rec=await comprimir(file,1600,0.85);
+    const rec=await comprimir(file,1800,0.8);
     const fid="eq_"+g+"_"+Date.now();
     await fotoPut(fid,rec);
     estado.equip.fotos=estado.equip.fotos||{};estado.equip.fotos[g]=fid;salvar();
     renderEqFotos();
     toast("Lendo placa…");
     const w=await ocrWorker();
-    const {data}=await w.recognize(rec.data);
-    aplicarOCR(g,parsePlaca(data&&data.text));
+    aplicarOCR(g,await lerPlacaMultiAngulo(w,rec.data));
   }catch(e){
     toast(_ocrW||_ocrLoading===null?"Não consegui ler — digite manualmente (foto salva ✓)":"Leitor indisponível offline — foto salva ✓");
   }
